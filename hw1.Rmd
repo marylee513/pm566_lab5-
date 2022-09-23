@@ -1,0 +1,139 @@
+---
+title: "pm566_hw1"
+author: "Yiping Li"
+output: github_document
+date: "`r Sys.Date()`" 
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(plyr)
+library(leaflet)
+library(skimr) #to check missing values
+```
+
+```{r, wk3}
+epa2004 <- data.table::fread('ad_viz_plotval_data_2004.csv')
+epa2019 <- data.table::fread ('ad_viz_plotval_data_2019.csv')
+```
+
+```{r, Step 1: check dimensions, headers, footers, variable names, variable types, missing values}
+dim(epa2004)
+head(epa2004)
+tail(epa2004)
+str(epa2004)
+#skim(epa2004) #all below are checking for missing values
+summary(epa2004)
+mean(is.na(epa2004))
+
+
+dim(epa2019)
+head(epa2019)
+tail(epa2019)
+str(epa2019)
+#skim(epa2019)
+summary(epa2019)
+mean(is.na(epa2019))
+```
+
+Findings summary:
+The EPA air quality datasets in 2004 and 2019 were named as epa2004 and epa2019. 
+epa2004 contains 19233 observations/rows and 20 variables/columns, without missing values. 
+epa2019 contains 53156 observations/rows and 20 variables/columns, without missing values. 
+The only "missing" value for both datasets is the CBSA_CODE (CBSA_CODE 1253 missing for epa2004, and 4181 for epa2019). 
+
+```{r, Step 2: combine 2 datasets}
+epa2004 <- epa2004 %>%
+  mutate(Year=2004)
+
+epa2019 <- epa2019 %>%
+  mutate(Year=2019)
+
+epa <- rbind(epa2004, epa2019)
+
+names(epa)[5] <- "pm2.5mean"
+names(epa)[19] <- "lat"
+names(epa)[20] <- "lon"
+
+#a total of 72389 values/rows were included in the combined dataset
+```
+
+```{r, Step 3: create a basic map in leaflet}
+leaflet() %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addCircles(
+    data= subset(epa, Year=="2004"), 
+    lat = ~lat, lng = ~lon, popup = "2004",
+    opacity = 1, fillOpacity = 1, radius = 400, color = "blue"
+    ) %>%
+  addCircles(
+    data = subset(epa, Year=="2019"),
+    lat = ~lat, lng = ~lon, popup = "2019",
+    opacity = 1, fillOpacity = 1, radius = 400, color = "red"
+    )
+```
+
+Summary: 
+There are more sites in 2019 compared to 2004 across the state. Most sites added in 2019 concentrated on San Francisco, Log Angeles, and San Diego areas. Most sites added in 2019 were close to the beach. 
+
+```{r, Step 4: check missing and implausible values}
+summary(epa$pm2.5mean)
+mean(is.na(epa$pm2.5mean))
+ 
+#negative values of PM2.5 are implausible, using dplyr to filter
+
+epa %>%
+  filter(pm2.5mean > 0) %>%
+  collect()
+```
+
+Summary:
+There is no missing value in the combined dataset. However, values of PM2.5 below 0 are implausible, so those values were excluded. A total nhumber of 72025 values were included. 
+
+```{r, Step 5: plots of "STATE_CODE", "COUNTY_CODE", "CBSA_NAME"}
+#state, histogram, http://www.sthda.com/english/wiki/ggplot2-histogram-plot-quick-start-guide-r-software-and-data-visualization
+state <- ddply(epa, "Year", summarise, pm2.5mean=mean(pm2.5mean))
+head(state) #unnecessary steps
+
+ggplot(epa, aes(x=pm2.5mean, color=as.factor(Year))) +
+  geom_histogram(binwidth=1, fill="white", position="dodge") +
+  theme(legend.position="top")
+
+#if "as.factor" is not added, histogram will not differentiate colors based on Year, why and how to make Year into the right variable???
+
+#county, boxplot, http://www.sthda.com/english/wiki/ggplot2-box-plot-quick-start-guide-r-software-and-data-visualization
+county <- epa %>%
+  group_by (COUNTY, Year) %>%
+  summarize(pm2.5mean=mean(pm2.5mean))
+
+ggplot(epa, aes(x=COUNTY, y=pm2.5mean, color=as.factor(Year))) +
+  geom_boxplot()
+
+#site in LA
+county <- epa %>%
+  group_by (CBSA_NAME, Year) %>%
+  summarize(pm2.5mean=mean(pm2.5mean))
+
+ggplot(epa, aes(x=CBSA_NAME, y=pm2.5mean, color=as.factor(Year))) +
+  geom_boxplot()
+
+```
+
+Observation:
+State level:
+PM2.5 values are lower during 2019 compared to those in 2004, although this difference is not obviously shown in the histogram. The histogram of both data from 2004 and 2019 is not normally distributes with a right-skew. 
+
+County level:
+The boxplot shows that PM2.5 values are generally lower in 2019 compared to those in 2004 across counties. 
+
+LA level: 
+The boxplot shows that PM2.5 values are generally lower in 2019 compared to those in 2004 across cities. 
+
+All levels above are showing the same decreasing trent of PM2.5 values from 2004 to 2019.
