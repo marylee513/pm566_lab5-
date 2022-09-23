@@ -1,0 +1,156 @@
+---
+title: "pm566_wk5_lab"
+author: "Yiping Li"
+output: github_document
+date: "`r Sys.Date()`" 
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(dtplyr)
+library(lubridate)
+```
+
+```{r}
+if (!file.exists("met_all.gz"))
+  download.file(
+    url = "https://raw.githubusercontent.com/USCbiostats/data-science-data/master/02_met/met_all.gz",
+    destfile = "met_all.gz",
+    method   = "libcurl",
+    timeout  = 60
+    )
+met <- data.table::fread("met_all.gz")
+
+met <- met[temp > -17][elev == 9999.0, elev:=NA]
+
+```
+
+```{r, read in the stations data}
+# Download the data
+stations <- fread("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv")
+stations[, USAF := as.integer(USAF)]
+
+# Dealing with NAs and 999999
+stations[, USAF   := fifelse(USAF == 999999, NA_integer_, USAF)]
+stations[, CTRY   := fifelse(CTRY == "", NA_character_, CTRY)]
+stations[, STATE  := fifelse(STATE == "", NA_character_, STATE)]
+
+# Selecting the three relevant columns, and keeping unique records
+stations <- unique(stations[, list(USAF, CTRY, STATE)])
+
+# Dropping NAs
+stations <- stations[!is.na(USAF)]
+
+# Removing duplicates
+stations[, n := 1:.N, by = .(USAF)]
+stations <- stations[n == 1,][, n := NULL]
+```
+
+```{r, merge met data with stations, merge-datatables}
+
+met <- merge(
+  # Data
+  x     = met,      
+  y     = stations, 
+  # List of variables to match
+  by.x  = "USAFID",
+  by.y  = "USAF", 
+  # Which obs to keep?
+  all.x = TRUE,      
+  all.y = FALSE
+  )
+
+```
+#Question 1: Representative station for the US
+```{r, compute mean temperature, wind speed and atmospheric pressure for each weather station, and pick the weather station with the average value closest to the meidan for the US}
+
+station_averages <- 
+  met[, .(
+    temp = mean(temp, na.rm=T), 
+    wind.sp = mean(wind.sp, na.rm=T), 
+    atm.press = mean(atm.press, na.rm=T)
+  ), by = USAFID]
+
+length(unique(met[,USAFID]))
+```
+
+#the above computes the mean by weather station. Now let's compute the median value for each variable
+```{r}
+statemedians <- 
+  met[, .(
+    temp50 = median(temp, na.rm=T), 
+    wind.sp50 = median(wind.sp, na.rm=T), 
+    atm.press50 = median(atm.press, na.rm=T)
+  )]
+
+#summary(statmedians[, temp]) not working
+```
+
+#A helpful function we might want to use which.min()"
+```{r}
+station_averages[, temp_dist50 := abs(temp - statemedians$temp50)][order(temp_dist50)]
+
+```
+#Lets use which.min
+```{r}
+station_averages[which.min(temp_dist50)]
+```
+it matches the above results
+
+#Question 2: Representative station per state
+```{r}
+station_averages <- 
+  met[, .(
+    temp = mean(temp, na.rm=T), 
+    wind.sp = mean(wind.sp, na.rm=T), 
+    atm.press = mean(atm.press, na.rm=T)
+  ), by = .(USAFID,STATE)]
+```
+
+```{r}
+state_medians <- station_averages[,.(temp50=median(temp,na.rm=T),
+                   wind.sp50=median(wind.sp,na.rm=T)),by=STATE]
+head(state_medians)
+```
+
+```{r}
+station_averages <- merge(
+  x = station_averages, 
+  y = state_medians, 
+  by.x = "STATE", 
+  by.y = "STATE", 
+  all.x = TRUE, 
+  all.y = FALSE
+)
+
+
+
+#find the smallest distance iwth "which.min()"
+station_averages[,temp_dist_state50 := temp - temp50]
+station_averages[,wind.sp_dist50 := wind.sp - wind.sp50]
+
+
+station_averages[,eucdist :=temp_dist_state50^2 +wind.sp_dist50^2 ]
+
+repstation <- station_averages[,.(eucdist=min(eucdist,na.rm=TRUE)),by=STATE]
+
+# merge the repstation with the station_average
+test <- merge(x=station_averages,
+  y=repstation,
+  by.x = c('eucdist','STATE'),
+  by.y= c('eucdist','STATE'),
+  all.x=FALSE,
+  all.y=TRUE
+)
+
+dim(test)
+
+head(test)
+```
