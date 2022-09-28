@@ -1,5 +1,5 @@
 ---
-title: "wk6_lab"
+title: "pm566_wk6_lab"
 author: "Yiping Li"
 output: github_document
 date: "`r Sys.Date()`" 
