@@ -44,6 +44,7 @@ specialties %>%
 
 #There are 'nrows(specialities)" medical specialities
 ```{r, barplot-of-speciality-counts}
+library(tidytext)
 specialties %>%
   top_n(10) %>%
   ggplot(aes(x=n, y=fct_reorder(medical_specialty,n))) +
