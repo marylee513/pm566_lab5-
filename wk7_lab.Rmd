@@ -64,7 +64,7 @@ The Ids are wrapped around text in the following way: <Id>... id number ...</Id>
 ids <- as.character(ids)
 
 # Find all the ids 
-ids <- stringr::str_extract_all(ids, "<Id>[[:digit:]]</Id")[[1]]
+ids <- stringr::str_extract_all(ids, "<Id>[[:digit:]]+</Id>")[[1]]
 
 # Remove all the leading and trailing <Id> </Id>. Make use of "|"
 ids <- stringr::str_remove_all(ids, "</?Id>")
